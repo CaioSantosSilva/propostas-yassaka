@@ -215,20 +215,27 @@ else:
                     st.error(f"Erro ao salvar: {e}")
 
         st.markdown("### Últimas propostas")
+
+        # listar com filtro (admin vê tudo; user vê só as suas)
         linhas = listar_propostas(
-    st.session_state.usuario,
-    st.session_state.get("role", "user")
-)
+            st.session_state.usuario,
+            st.session_state.get("role", "user"),
+        )
 
-# badge informativo
-if st.session_state.get("role") == "admin":
-    st.caption("🟢 Exibindo **todas** as propostas (admin).")
-else:
-    st.caption(f"🟡 Exibindo **apenas suas** propostas: {st.session_state.usuario}.")
+        # badge informativo
+        if st.session_state.get("role") == "admin":
+            st.caption("🟢 Exibindo **todas** as propostas (admin).")
+        else:
+            st.caption(f"🟡 Exibindo **apenas suas** propostas: {st.session_state.usuario}.")
 
+        if linhas:
+            for pid, pcl, pprod, pval, ptur, phead, pdt in linhas:
+                st.write(f"• **#{pid}** — {pcl} | {pprod} | R$ {pval:.2f} | turmas: {ptur} | head: {phead} | {pdt:%Y-%m-%d %H:%M}")
+        else:
+            st.info("Nenhuma proposta cadastrada ainda.")
 
     # ----- Aba Admin: Usuários -----
-    else:
+    elif aba == "Admin: Usuários":
         st.subheader("👑 Administração de Usuários")
 
         st.markdown("#### Criar novo usuário")
