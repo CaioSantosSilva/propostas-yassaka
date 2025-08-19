@@ -19,60 +19,118 @@ def _get_neon_url():
 
 NEON_URL = _get_neon_url()
 
-# --------- Tema (paleta Yassaka) ----------
+# --------- Tema (paleta Yassaka – claro) ----------
 def inject_theme():
-    # Paleta Yassaka (ajuste hex se desejar)
-    PRIMARY = "#0B5FFF"   # azul
-    ACCENT  = "#10B981"   # verde
-    WARN    = "#F59E0B"   # âmbar
-    DANGER  = "#EF4444"   # vermelho
-    BG      = "#0F172A"   # slate-900
-    CARD    = "#111827"   # quase preto
-    TEXT    = "#E5E7EB"   # cinza claro
+    # Paleta oficial Yassaka
+    ROXO    = "#6C42D3"  # primário
+    AMARELO = "#FCC52C"  # destaque
+    CINZA_E = "#6C6C6B"  # escuro
+    CINZA_M = "#747474"  # médio
+    CINZA_C = "#7C7B7B"  # claro
+
+    # Base do tema claro
+    BG_APP   = "#F7F7F7"
+    BG_CARD  = "#FFFFFF"
+    TEXTO    = "#1F2937"   # quase preto
+    SUBTEXTO = CINZA_M
+    BORDA    = "#E5E7EB"
+    HOVER    = "#5C36B7"   # roxo mais escuro pro hover
 
     st.markdown(f"""
     <style>
+      /* Fundo geral e tipografia */
       .stApp {{
-        background: linear-gradient(180deg, {BG} 0%, #0B1226 100%) !important;
-        color: {TEXT} !important;
+        background: {BG_APP} !important;
+        color: {TEXTO} !important;
       }}
-      header[data-testid="stHeader"] {{ background: rgba(0,0,0,0); }}
-      section[data-testid="stSidebar"] {{
-        background: {CARD} !important;
-        border-right: 1px solid rgba(255,255,255,0.08);
-      }}
-      .stButton>button {{
-        background: {PRIMARY} !important;
-        color: white !important;
-        border-radius: 10px !important;
-        border: none !important;
-      }}
-      .stTextInput>div>div>input, .stNumberInput>div>div>input, textarea,
-      .stSelectbox>div div[data-baseweb="select"] {{
-        background: #0B1020 !important;
-        color: {TEXT} !important;
-        border: 1px solid rgba(255,255,255,0.12) !important;
-        border-radius: 10px !important;
-      }}
-      .card {{
-        background: {CARD};
-        padding: 12px 14px; border-radius: 12px; margin-bottom: 8px;
-        border: 1px solid rgba(255,255,255,0.06);
-      }}
-      .badge {{
-        padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; display: inline-block;
-      }}
-      .badge-q {{ background: rgba(16,185,129,0.15); color: {ACCENT}; border: 1px solid rgba(16,185,129,0.35); }}
-      .badge-m {{ background: rgba(245,158,11,0.15); color: {WARN};   border: 1px solid rgba(245,158,11,0.35);  }}
-      .badge-f {{ background: rgba(239,68,68,0.15);  color: {DANGER}; border: 1px solid rgba(239,68,68,0.35);  }}
 
-      /* rodapé fixo */
+      header[data-testid="stHeader"] {{
+        background: rgba(255,255,255,0.8) !important;
+        backdrop-filter: blur(6px);
+        border-bottom: 1px solid {BORDA};
+      }}
+
+      /* Sidebar clara */
+      section[data-testid="stSidebar"] {{
+        background: #FAFAFA !important;
+        border-right: 1px solid {BORDA};
+      }}
+
+      /* Cartões e blocos */
+      .card {{
+        background: {BG_CARD};
+        color: {TEXTO};
+        padding: 12px 14px;
+        border-radius: 12px;
+        margin-bottom: 10px;
+        border: 1px solid {BORDA};
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      }}
+
+      /* Inputs */
+      .stTextInput>div>div>input,
+      .stNumberInput>div>div>input,
+      textarea,
+      .stSelectbox>div div[data-baseweb="select"] {{
+        background: #FFFFFF !important;
+        color: {TEXTO} !important;
+        border: 1px solid {BORDA} !important;
+        border-radius: 10px !important;
+      }}
+
+      /* Botões */
+      .stButton>button {{
+        background: {ROXO} !important;
+        color: #FFFFFF !important;
+        border-radius: 10px !important;
+        border: 0 !important;
+      }}
+      .stButton>button:hover {{
+        background: {HOVER} !important;
+      }}
+
+      /* Textos auxiliares */
+      .stMarkdown, .stText, .stCaption {{
+        color: {TEXTO} !important;
+      }}
+      .stCaption {{
+        color: {SUBTEXTO} !important;
+      }}
+
+      /* Badges QMF (Quente/Morna/Fria) */
+      .badge {{
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-block;
+      }}
+      /* Quente = Amarelo */
+      .badge-q {{
+        background: rgba(252,197,44,0.25);
+        color: {CINZA_E};
+        border: 1px solid rgba(252,197,44,0.55);
+      }}
+      /* Morna = Roxo */
+      .badge-m {{
+        background: rgba(108,66,211,0.15);
+        color: {ROXO};
+        border: 1px solid rgba(108,66,211,0.45);
+      }}
+      /* Fria = Cinza */
+      .badge-f {{
+        background: rgba(116,116,116,0.18);
+        color: {CINZA_E};
+        border: 1px solid rgba(116,116,116,0.40);
+      }}
+
+      /* Rodapé claro */
       .yassaka-footer {{
         position: fixed; left: 0; right: 0; bottom: 0;
         text-align: center; padding: 8px 12px;
-        font-size: 12px; color: rgba(229,231,235,0.75);
-        background: rgba(17,24,39,0.75);
-        border-top: 1px solid rgba(255,255,255,0.06);
+        font-size: 12px; color: {CINZA_M};
+        background: #FFFFFF;
+        border-top: 1px solid {BORDA};
         z-index: 999;
       }}
     </style>
@@ -116,7 +174,6 @@ def ensure_schema():
         # garante coluna/constraint em bases já existentes
         cur.execute("""ALTER TABLE app.propostas
                        ADD COLUMN IF NOT EXISTS qmf CHAR(1) NOT NULL DEFAULT 'F';""")
-        # constraint com nome (se já existir, ignora via bloco DO)
         cur.execute("""
         DO $$
         BEGIN
@@ -227,10 +284,10 @@ def listar_usuarios():
 def qmf_label_and_class(qmf: str):
     q = (qmf or "F").upper()
     if q == "Q":
-        return "Quente", "badge-q"
+        return "Quente", "badge-q"  # Amarelo
     if q == "M":
-        return "Morna", "badge-m"
-    return "Fria", "badge-f"
+        return "Morna", "badge-m"   # Roxo
+    return "Fria", "badge-f"        # Cinza
 
 # ------------------------------ APP UI -------------------------------------
 st.set_page_config(page_title="Propostas", layout="centered")
