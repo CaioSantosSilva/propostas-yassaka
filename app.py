@@ -19,6 +19,65 @@ def _get_neon_url():
 
 NEON_URL = _get_neon_url()
 
+# --------- Tema (paleta Yassaka) ----------
+def inject_theme():
+    # Paleta Yassaka (ajuste hex se desejar)
+    PRIMARY = "#0B5FFF"   # azul
+    ACCENT  = "#10B981"   # verde
+    WARN    = "#F59E0B"   # âmbar
+    DANGER  = "#EF4444"   # vermelho
+    BG      = "#0F172A"   # slate-900
+    CARD    = "#111827"   # quase preto
+    TEXT    = "#E5E7EB"   # cinza claro
+
+    st.markdown(f"""
+    <style>
+      .stApp {{
+        background: linear-gradient(180deg, {BG} 0%, #0B1226 100%) !important;
+        color: {TEXT} !important;
+      }}
+      header[data-testid="stHeader"] {{ background: rgba(0,0,0,0); }}
+      section[data-testid="stSidebar"] {{
+        background: {CARD} !important;
+        border-right: 1px solid rgba(255,255,255,0.08);
+      }}
+      .stButton>button {{
+        background: {PRIMARY} !important;
+        color: white !important;
+        border-radius: 10px !important;
+        border: none !important;
+      }}
+      .stTextInput>div>div>input, .stNumberInput>div>div>input, textarea,
+      .stSelectbox>div div[data-baseweb="select"] {{
+        background: #0B1020 !important;
+        color: {TEXT} !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        border-radius: 10px !important;
+      }}
+      .card {{
+        background: {CARD};
+        padding: 12px 14px; border-radius: 12px; margin-bottom: 8px;
+        border: 1px solid rgba(255,255,255,0.06);
+      }}
+      .badge {{
+        padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; display: inline-block;
+      }}
+      .badge-q {{ background: rgba(16,185,129,0.15); color: {ACCENT}; border: 1px solid rgba(16,185,129,0.35); }}
+      .badge-m {{ background: rgba(245,158,11,0.15); color: {WARN};   border: 1px solid rgba(245,158,11,0.35);  }}
+      .badge-f {{ background: rgba(239,68,68,0.15);  color: {DANGER}; border: 1px solid rgba(239,68,68,0.35);  }}
+
+      /* rodapé fixo */
+      .yassaka-footer {{
+        position: fixed; left: 0; right: 0; bottom: 0;
+        text-align: center; padding: 8px 12px;
+        font-size: 12px; color: rgba(229,231,235,0.75);
+        background: rgba(17,24,39,0.75);
+        border-top: 1px solid rgba(255,255,255,0.06);
+        z-index: 999;
+      }}
+    </style>
+    """, unsafe_allow_html=True)
+
 # --------------------------- Conexão / Schema ------------------------------
 def get_connection():
     return psycopg2.connect(NEON_URL)
@@ -46,12 +105,31 @@ def ensure_schema():
       valor            NUMERIC(18,2) NOT NULL DEFAULT 0,
       turmas           INTEGER NOT NULL DEFAULT 1,
       head_responsavel VARCHAR(100) NOT NULL,
-      criado_em        TIMESTAMP NOT NULL DEFAULT NOW()
+      qmf              CHAR(1) NOT NULL DEFAULT 'F',
+      criado_em        TIMESTAMP NOT NULL DEFAULT NOW(),
+      CONSTRAINT propostas_qmf_chk CHECK (qmf IN ('Q','M','F'))
     );
     """
     conn = get_connection()
     with conn, conn.cursor() as cur:
         cur.execute(ddl)
+        # garante coluna/constraint em bases já existentes
+        cur.execute("""ALTER TABLE app.propostas
+                       ADD COLUMN IF NOT EXISTS qmf CHAR(1) NOT NULL DEFAULT 'F';""")
+        # constraint com nome (se já existir, ignora via bloco DO)
+        cur.execute("""
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'propostas_qmf_chk'
+              AND conrelid = 'app.propostas'::regclass
+          ) THEN
+            ALTER TABLE app.propostas
+              ADD CONSTRAINT propostas_qmf_chk CHECK (qmf IN ('Q','M','F'));
+          END IF;
+        END$$;
+        """)
     conn.close()
 
 # --------------------------- Autenticação ----------------------------------
@@ -69,15 +147,15 @@ def autenticar_usuario(username, password):
     return None
 
 # --------------------------- Propostas -------------------------------------
-def registrar_proposta(cliente, produto, valor, turmas, head_responsavel):
+def registrar_proposta(cliente, produto, valor, turmas, head_responsavel, qmf):
     conn = get_connection()
     with conn, conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO app.propostas (cliente, produto, valor, turmas, head_responsavel)
-            VALUES (%s, %s, %s, %s, %s);
+            INSERT INTO app.propostas (cliente, produto, valor, turmas, head_responsavel, qmf)
+            VALUES (%s, %s, %s, %s, %s, %s);
             """,
-            (cliente, produto, Decimal(valor), int(turmas), head_responsavel)
+            (cliente, produto, Decimal(valor), int(turmas), head_responsavel, qmf)
         )
     conn.close()
 
@@ -86,14 +164,16 @@ def listar_propostas(usuario_logado, role, limit=50):
     cur = conn.cursor()
     if role == "admin":
         cur.execute("""
-            SELECT id, cliente, produto, valor, turmas, head_responsavel, criado_em
+            SELECT id, cliente, produto, valor, turmas, head_responsavel, qmf,
+                   (criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo' AS criado_local
             FROM app.propostas
             ORDER BY id DESC
             LIMIT %s;
         """, (limit,))
     else:
         cur.execute("""
-            SELECT id, cliente, produto, valor, turmas, head_responsavel, criado_em
+            SELECT id, cliente, produto, valor, turmas, head_responsavel, qmf,
+                   (criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo' AS criado_local
             FROM app.propostas
             WHERE head_responsavel = %s
             ORDER BY id DESC
@@ -143,8 +223,18 @@ def listar_usuarios():
     cur.close(); conn.close()
     return rows
 
+# ------------------------------ Utils UI -----------------------------------
+def qmf_label_and_class(qmf: str):
+    q = (qmf or "F").upper()
+    if q == "Q":
+        return "Quente", "badge-q"
+    if q == "M":
+        return "Morna", "badge-m"
+    return "Fria", "badge-f"
+
 # ------------------------------ APP UI -------------------------------------
 st.set_page_config(page_title="Propostas", layout="centered")
+inject_theme()
 ensure_schema()
 
 if "autenticado" not in st.session_state:
@@ -197,16 +287,19 @@ else:
         with c2:
             turmas = st.number_input("Turmas *", min_value=1, step=1, value=1)
             head_resp = st.text_input("Head Responsável *", value=st.session_state.usuario or "")
+            qmf_map = {"Quente (Q)": "Q", "Morna (M)": "M", "Fria (F)": "F"}
+            qmf_sel = st.selectbox("QMF *", list(qmf_map.keys()), index=1)  # padrão Morna
+            qmf_code = qmf_map[qmf_sel]
 
         if st.button("Salvar Proposta"):
-            if not (cliente.strip() and produto.strip() and valor_str.strip() and head_resp.strip()):
+            if not (cliente.strip() and produto.strip() and valor_str.strip() and head_resp.strip() and qmf_code):
                 st.error("Preencha todos os campos obrigatórios (*)")
             else:
                 try:
                     _ = Decimal(valor_str.replace(",", "."))
                     registrar_proposta(
                         cliente.strip(), produto.strip(),
-                        valor_str.replace(",", "."), turmas, head_resp.strip()
+                        valor_str.replace(",", "."), turmas, head_resp.strip(), qmf_code
                     )
                     st.success("✅ Proposta registrada com sucesso!")
                 except InvalidOperation:
@@ -229,8 +322,17 @@ else:
             st.caption(f"🟡 Exibindo **apenas suas** propostas: {st.session_state.usuario}.")
 
         if linhas:
-            for pid, pcl, pprod, pval, ptur, phead, pdt in linhas:
-                st.write(f"• **#{pid}** — {pcl} | {pprod} | R$ {pval:.2f} | turmas: {ptur} | head: {phead} | {pdt:%Y-%m-%d %H:%M}")
+            for pid, pcl, pprod, pval, ptur, phead, pqmf, pdt in linhas:
+                label, klass = qmf_label_and_class(pqmf)
+                st.markdown(
+                    f"""
+                    <div class="card">
+                      <div><span class="badge {klass}">{label}</span></div>
+                      <div><strong>#{pid}</strong> — {pcl} | {pprod} | R$ {pval:.2f} | turmas: {ptur} | head: {phead} | {pdt:%d/%m/%Y %H:%M}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
         else:
             st.info("Nenhuma proposta cadastrada ainda.")
 
@@ -311,3 +413,6 @@ else:
                 st.info("Nenhum usuário encontrado.")
         except Exception as e:
             st.error(f"Erro ao listar: {e}")
+
+# --------- Rodapé Yassaka ----------
+st.markdown('<div class="yassaka-footer">© Yassaka – Todos os direitos reservados</div>', unsafe_allow_html=True)
