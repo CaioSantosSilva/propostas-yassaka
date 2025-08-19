@@ -81,15 +81,24 @@ def registrar_proposta(cliente, produto, valor, turmas, head_responsavel):
         )
     conn.close()
 
-def listar_propostas(limit=50):
+def listar_propostas(usuario_logado, role, limit=50):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT id, cliente, produto, valor, turmas, head_responsavel, criado_em
-        FROM app.propostas
-        ORDER BY id DESC
-        LIMIT %s;
-    """, (limit,))
+    if role == "admin":
+        cur.execute("""
+            SELECT id, cliente, produto, valor, turmas, head_responsavel, criado_em
+            FROM app.propostas
+            ORDER BY id DESC
+            LIMIT %s;
+        """, (limit,))
+    else:
+        cur.execute("""
+            SELECT id, cliente, produto, valor, turmas, head_responsavel, criado_em
+            FROM app.propostas
+            WHERE head_responsavel = %s
+            ORDER BY id DESC
+            LIMIT %s;
+        """, (usuario_logado, limit))
     rows = cur.fetchall()
     cur.close(); conn.close()
     return rows
@@ -206,12 +215,17 @@ else:
                     st.error(f"Erro ao salvar: {e}")
 
         st.markdown("### Últimas propostas")
-        linhas = listar_propostas()
-        if linhas:
-            for pid, pcl, pprod, pval, ptur, phead, pdt in linhas:
-                st.write(f"• **#{pid}** — {pcl} | {pprod} | R$ {pval:.2f} | turmas: {ptur} | head: {phead} | {pdt:%Y-%m-%d %H:%M}")
-        else:
-            st.info("Nenhuma proposta cadastrada ainda.")
+        linhas = listar_propostas(
+    st.session_state.usuario,
+    st.session_state.get("role", "user")
+)
+
+# badge informativo
+if st.session_state.get("role") == "admin":
+    st.caption("🟢 Exibindo **todas** as propostas (admin).")
+else:
+    st.caption(f"🟡 Exibindo **apenas suas** propostas: {st.session_state.usuario}.")
+
 
     # ----- Aba Admin: Usuários -----
     else:
