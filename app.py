@@ -170,8 +170,8 @@ def ensure_schema():
     """
     conn = get_connection()
     with conn, conn.cursor() as cur:
+        # Cria tabelas/colunas/constraints se faltarem
         cur.execute(ddl)
-        # garante coluna/constraint em bases já existentes
         cur.execute("""ALTER TABLE app.propostas
                        ADD COLUMN IF NOT EXISTS qmf CHAR(1) NOT NULL DEFAULT 'F';""")
         cur.execute("""
@@ -184,6 +184,25 @@ def ensure_schema():
           ) THEN
             ALTER TABLE app.propostas
               ADD CONSTRAINT propostas_qmf_chk CHECK (qmf IN ('Q','M','F'));
+          END IF;
+        END$$;
+        """)
+        # >>> MIGRA criado_em para TIMESTAMPTZ se ainda for timestamp <<<
+        cur.execute("""
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema='app' AND table_name='propostas'
+              AND column_name='criado_em'
+              AND data_type='timestamp without time zone'
+          ) THEN
+            ALTER TABLE app.propostas
+              ALTER COLUMN criado_em TYPE timestamptz
+              USING (criado_em AT TIME ZONE 'UTC');
+            ALTER TABLE app.propostas
+              ALTER COLUMN criado_em SET DEFAULT now();
           END IF;
         END$$;
         """)
@@ -219,10 +238,11 @@ def registrar_proposta(cliente, produto, valor, turmas, head_responsavel, qmf):
 def listar_propostas(usuario_logado, role, limit=50):
     conn = get_connection()
     cur = conn.cursor()
+    # Agora criado_em é TIMESTAMPTZ -> converte direto para São Paulo
     if role == "admin":
         cur.execute("""
             SELECT id, cliente, produto, valor, turmas, head_responsavel, qmf,
-                   (criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo' AS criado_local
+                   criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_local
             FROM app.propostas
             ORDER BY id DESC
             LIMIT %s;
@@ -230,7 +250,7 @@ def listar_propostas(usuario_logado, role, limit=50):
     else:
         cur.execute("""
             SELECT id, cliente, produto, valor, turmas, head_responsavel, qmf,
-                   (criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo' AS criado_local
+                   criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_local
             FROM app.propostas
             WHERE head_responsavel = %s
             ORDER BY id DESC
