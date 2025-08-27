@@ -1,4 +1,7 @@
-streamlit
-psycopg2-binary
-bcrypt
-python-dotenv
+
+flask
+streamlit>=1.37
+psycopg2-binary>=2.9
+bcrypt>=4.0
+python-dotenv>=1.0
+pandas>=2.0
