@@ -1,7 +1,6 @@
-# app.py — Yassaka | Propostas + Painel Educadores | Streamlit + Neon
+# app.py — Yassaka | Propostas + (novo) Painel Educadores | Streamlit + Neon
 import os
-import re
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import urlparse
 
@@ -10,8 +9,9 @@ import psycopg2
 import psycopg2.extras
 import streamlit as st
 
-
-# --------- Config: pega a URL do Neon dos Secrets ou do ambiente ----------
+# ---------------------------------------------------------------------------
+# Config: pega a URL do Neon dos Secrets ou do ambiente
+# ---------------------------------------------------------------------------
 def _get_neon_url():
     try:
         if "NEON_URL" in st.secrets:
@@ -20,12 +20,9 @@ def _get_neon_url():
         pass
     if os.getenv("NEON_URL"):
         return os.getenv("NEON_URL")
-    # fallback apenas para dev local
     return "postgresql://neondb_owner:troque_aqui@ep-xxxx.../neondb?sslmode=require"
 
-
 NEON_URL = _get_neon_url()
-
 
 def _validate_url(url: str):
     assert url, "NEON_URL está vazio / não carregou."
@@ -34,8 +31,9 @@ def _validate_url(url: str):
     assert parsed.hostname, "Hostname ausente na URL."
     return parsed
 
-
-# --------- Tema (paleta Yassaka – claro) ----------
+# ---------------------------------------------------------------------------
+# Tema (paleta Yassaka – claro)
+# ---------------------------------------------------------------------------
 def inject_theme():
     ROXO = "#6C42D3"
     AMARELO = "#FCC52C"
@@ -158,7 +156,7 @@ def inject_theme():
         transform: translateY(-2px);
       }}
 
-      /* badges */
+      /* badges (usadas no histórico) */
       .badge {{
         padding: 4px 10px;
         border-radius: 999px;
@@ -187,12 +185,12 @@ def inject_theme():
         unsafe_allow_html=True,
     )
 
-
-# --------------------------- Conexão / Schema ------------------------------
+# ---------------------------------------------------------------------------
+# Conexão / Schema
+# ---------------------------------------------------------------------------
 def get_connection():
     _validate_url(NEON_URL)
     return psycopg2.connect(NEON_URL)
-
 
 def ensure_schema():
     conn = get_connection()
@@ -200,148 +198,81 @@ def ensure_schema():
         # schema base
         cur.execute("CREATE SCHEMA IF NOT EXISTS app;")
 
-        # usuários
+        # ------------------ usuários (mantido) ------------------
         cur.execute(
             """
-        CREATE TABLE IF NOT EXISTS app.usuarios (
-          id           SERIAL PRIMARY KEY,
-          username     VARCHAR(100) UNIQUE NOT NULL,
-          senha_hash   TEXT NOT NULL,
-          role         VARCHAR(20) NOT NULL DEFAULT 'user',
-          is_active    BOOLEAN NOT NULL DEFAULT TRUE,
-          must_change  BOOLEAN NOT NULL DEFAULT FALSE,
-          created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
-          updated_at   TIMESTAMP NOT NULL DEFAULT NOW()
-        );
-        """
+            CREATE TABLE IF NOT EXISTS app.usuarios (
+              id           SERIAL PRIMARY KEY,
+              username     VARCHAR(100) UNIQUE NOT NULL,
+              senha_hash   TEXT NOT NULL,
+              role         VARCHAR(20) NOT NULL DEFAULT 'user',
+              is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+              must_change  BOOLEAN NOT NULL DEFAULT FALSE,
+              created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
+              updated_at   TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+            """
         )
-        # garante a constraint com 'educador' (idempotente)
         cur.execute("ALTER TABLE app.usuarios DROP CONSTRAINT IF EXISTS usuarios_role_chk;")
         cur.execute(
             """ALTER TABLE app.usuarios
                ADD CONSTRAINT usuarios_role_chk CHECK (role IN ('user','admin','educador'));"""
         )
 
-        # propostas
+        # ------------------ propostas (mantido) ------------------
         cur.execute(
             """
-        CREATE TABLE IF NOT EXISTS app.propostas (
-          id               SERIAL PRIMARY KEY,
-          cliente          VARCHAR(150) NOT NULL,
-          produto          VARCHAR(120) NOT NULL,
-          valor            NUMERIC(18,2) NOT NULL DEFAULT 0,
-          turmas           INTEGER NOT NULL DEFAULT 1,
-          head_responsavel VARCHAR(100) NOT NULL,
-          qmf              CHAR(1) NOT NULL DEFAULT 'F',
-          criado_em        TIMESTAMP NOT NULL DEFAULT NOW(),
-          CONSTRAINT propostas_qmf_chk CHECK (qmf IN ('Q','M','F'))
-        );
-        """
+            CREATE TABLE IF NOT EXISTS app.propostas (
+              id               SERIAL PRIMARY KEY,
+              cliente          VARCHAR(150) NOT NULL,
+              produto          VARCHAR(120) NOT NULL,
+              valor            NUMERIC(18,2) NOT NULL DEFAULT 0,
+              turmas           INTEGER NOT NULL DEFAULT 1,
+              head_responsavel VARCHAR(100) NOT NULL,
+              qmf              CHAR(1) NOT NULL DEFAULT 'F',
+              criado_em        TIMESTAMP NOT NULL DEFAULT NOW(),
+              CONSTRAINT propostas_qmf_chk CHECK (qmf IN ('Q','M','F'))
+            );
+            """
         )
         cur.execute(
             """ALTER TABLE app.propostas
                ADD COLUMN IF NOT EXISTS qmf CHAR(1) NOT NULL DEFAULT 'F';"""
         )
-        cur.execute(
-            """
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM pg_constraint
-            WHERE conname = 'propostas_qmf_chk'
-              AND conrelid = 'app.propostas'::regclass
-          ) THEN
-            ALTER TABLE app.propostas
-              ADD CONSTRAINT propostas_qmf_chk CHECK (qmf IN ('Q','M','F'));
-          END IF;
-        END$$;
-        """
-        )
-        cur.execute(
-            """
-        DO $$
-        BEGIN
-          IF EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema='app' AND table_name='propostas'
-              AND column_name='criado_em'
-              AND data_type='timestamp without time zone'
-          ) THEN
-            ALTER TABLE app.propostas
-              ALTER COLUMN criado_em TYPE timestamptz
-              USING (criado_em AT TIME ZONE 'UTC');
-            ALTER TABLE app.propostas
-              ALTER COLUMN criado_em SET DEFAULT now();
-          END IF;
-        END$$;
-        """
-        )
 
-        # educadores — base + relax NOT NULL
+        # ------------------ NOVAS TABELAS DO PAINEL ------------------
+        # Reuniões efetivadas
         cur.execute(
             """
-        CREATE TABLE IF NOT EXISTS app.educadores (
-          id                   SERIAL PRIMARY KEY,
-          owner_username       VARCHAR(100) NOT NULL,
-          nome                 VARCHAR(150),
-          email                VARCHAR(150) UNIQUE,
-          telefone             VARCHAR(40),
-          area                 VARCHAR(120),
-          especialidades       TEXT,
-          disponibilidade      TEXT,
-          reunioes_efetivadas  INTEGER NOT NULL DEFAULT 0,
-          projetos             TEXT,
-          atestados            TEXT,
-          recomendacoes        TEXT,
-          ativo                BOOLEAN NOT NULL DEFAULT TRUE,
-          criado_em            TIMESTAMPTZ NOT NULL DEFAULT now()
-        );
-        """
+            CREATE TABLE IF NOT EXISTS app.reunioes_efetivadas (
+              id              SERIAL PRIMARY KEY,
+              owner_username  VARCHAR(100) NOT NULL,
+              data            DATE NOT NULL,
+              cliente         VARCHAR(200) NOT NULL,
+              responsavel     VARCHAR(150) NOT NULL,
+              criado_em       TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            """
         )
-        # remover NOT NULL de nome/email se houver (idempotente)
+        # Atestados
         cur.execute(
             """
-        DO $$
-        BEGIN
-          IF EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema='app' AND table_name='educadores'
-              AND column_name='nome' AND is_nullable='NO'
-          ) THEN
-            ALTER TABLE app.educadores ALTER COLUMN nome DROP NOT NULL;
-          END IF;
-          IF EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema='app' AND table_name='educadores'
-              AND column_name='email' AND is_nullable='NO'
-          ) THEN
-            ALTER TABLE app.educadores ALTER COLUMN email DROP NOT NULL;
-          END IF;
-        END$$;
-        """
+            CREATE TABLE IF NOT EXISTS app.atestados_educadores (
+              id                    SERIAL PRIMARY KEY,
+              owner_username        VARCHAR(100) NOT NULL,
+              mes                   DATE NOT NULL,          -- guardamos como dia 1 do mês
+              cliente               VARCHAR(200) NOT NULL,
+              projeto_finalizado    TEXT NOT NULL,
+              atestado_conquistado  TEXT NOT NULL,
+              criado_em             TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            """
         )
-
-        # novos campos do painel
-        cur.execute(
-            """ALTER TABLE app.educadores
-               ADD COLUMN IF NOT EXISTS empresa_reuniao VARCHAR(150);"""
-        )
-        cur.execute("""ALTER TABLE app.educadores ADD COLUMN IF NOT EXISTS data_reuniao DATE;""")
-        cur.execute("""ALTER TABLE app.educadores ADD COLUMN IF NOT EXISTS contato VARCHAR(150);""")
-        cur.execute(
-            """ALTER TABLE app.educadores
-               ADD COLUMN IF NOT EXISTS telefone_contato VARCHAR(30);"""
-        )
-        cur.execute(
-            """ALTER TABLE app.educadores
-               ADD COLUMN IF NOT EXISTS valor_projeto NUMERIC(18,2);"""
-        )
-        cur.execute("""ALTER TABLE app.educadores ADD COLUMN IF NOT EXISTS uf CHAR(2);""")
-        cur.execute("""ALTER TABLE app.educadores ADD COLUMN IF NOT EXISTS educador VARCHAR(150);""")
     conn.close()
 
-
-# --------------------------- Autenticação ----------------------------------
+# ---------------------------------------------------------------------------
+# Autenticação
+# ---------------------------------------------------------------------------
 def autenticar_usuario(username, password):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -358,8 +289,22 @@ def autenticar_usuario(username, password):
         return {"username": row["username"], "role": row["role"]}
     return None
 
+# ---------------------------------------------------------------------------
+# Propostas (mantido)
+# ---------------------------------------------------------------------------
+def _parse_valor_brl(txt: str) -> Decimal | None:
+    if not txt:
+        return None
+    clean = txt.strip().replace("R$", "").replace(" ", "")
+    if "," in clean and "." in clean:
+        clean = clean.replace(".", "").replace(",", ".")
+    elif "," in clean:
+        clean = clean.replace(",", ".")
+    try:
+        return Decimal(clean).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except Exception:
+        return None
 
-# --------------------------- Propostas -------------------------------------
 def registrar_proposta(cliente, produto, valor, turmas, head_responsavel, qmf):
     conn = get_connection()
     with conn, conn.cursor() as cur:
@@ -371,7 +316,6 @@ def registrar_proposta(cliente, produto, valor, turmas, head_responsavel, qmf):
             (cliente, produto, Decimal(valor), int(turmas), head_responsavel, qmf),
         )
     conn.close()
-
 
 def listar_propostas(usuario_logado, role, limit=50):
     conn = get_connection()
@@ -404,138 +348,92 @@ def listar_propostas(usuario_logado, role, limit=50):
     conn.close()
     return rows
 
-
-# --------------------------- EDUCADORES (CRUD focado) ----------------------
-def obter_educador_por_owner(owner_username: str):
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cur.execute(
-        """
-        SELECT *
-        FROM app.educadores
-        WHERE owner_username=%s
-        ORDER BY id DESC
-        LIMIT 1;
-    """,
-        (owner_username,),
-    )
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row
-
-
-def _parse_valor_brl(txt: str) -> Decimal | None:
-    if not txt:
-        return None
-    # aceita "1.234,56" ou "1234,56" ou "1234.56"
-    clean = txt.strip().replace("R$", "").replace(" ", "")
-    if "," in clean and "." in clean:
-        clean = clean.replace(".", "").replace(",", ".")
-    elif "," in clean:
-        clean = clean.replace(",", ".")
-    try:
-        return Decimal(clean).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    except Exception:
-        return None
-
-
-_BR_PHONE_RE = re.compile(r"^[0-9()\-\s+]{8,20}$")
-
-
-def upsert_educador(
-    owner_username: str,
-    empresa_reuniao: str,
-    data_reuniao: date | None,
-    contato: str,
-    telefone_contato: str,
-    projetos: str,
-    valor_projeto_str: str,
-    atestados: str,
-    uf: str,
-    educador: str,
-):
-    valor_projeto = _parse_valor_brl(valor_projeto_str)
-    if valor_projeto_str and valor_projeto is None:
-        raise ValueError("Valor do projeto inválido. Use formato 1234,56.")
-
-    if telefone_contato and not _BR_PHONE_RE.match(telefone_contato.strip()):
-        raise ValueError("Telefone inválido. Ex: (11) 91234-5678")
-
+# ---------------------------------------------------------------------------
+# PAINEL EDUCADORES — operações
+# ---------------------------------------------------------------------------
+def inserir_reuniao(owner_username: str, data_reuniao: date, cliente: str, responsavel: str):
     conn = get_connection()
     with conn, conn.cursor() as cur:
-        cur.execute("SELECT id FROM app.educadores WHERE owner_username=%s LIMIT 1;", (owner_username,))
-        found = cur.fetchone()
-        if found:
-            cur.execute(
-                """
-                UPDATE app.educadores
-                   SET empresa_reuniao=%s,
-                       data_reuniao=%s,
-                       contato=%s,
-                       telefone_contato=%s,
-                       projetos=%s,
-                       valor_projeto=%s,
-                       atestados=%s,
-                       uf=%s,
-                       educador=%s
-                 WHERE owner_username=%s;
+        cur.execute(
+            """
+            INSERT INTO app.reunioes_efetivadas (owner_username, data, cliente, responsavel)
+            VALUES (%s, %s, %s, %s);
             """,
-                (
-                    empresa_reuniao or None,
-                    data_reuniao,
-                    contato or None,
-                    (telefone_contato or "").strip() or None,
-                    projetos or None,
-                    valor_projeto,
-                    atestados or None,
-                    (uf or "").upper()[:2] or None,
-                    educador or owner_username,
-                    owner_username,
-                ),
-            )
-        else:
-            cur.execute(
-                """
-                INSERT INTO app.educadores
-                  (owner_username, empresa_reuniao, data_reuniao, contato, telefone_contato,
-                   projetos, valor_projeto, atestados, uf, educador)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
-            """,
-                (
-                    owner_username,
-                    empresa_reuniao or None,
-                    data_reuniao,
-                    contato or None,
-                    (telefone_contato or "").strip() or None,
-                    projetos or None,
-                    valor_projeto,
-                    atestados or None,
-                    (uf or "").upper()[:2] or None,
-                    educador or owner_username,
-                ),
-            )
+            (owner_username, data_reuniao, cliente, responsavel),
+        )
     conn.close()
 
+def listar_reunioes(owner_username: str, limit: int = 20):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, data, cliente, responsavel,
+               criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_local
+        FROM app.reunioes_efetivadas
+        WHERE owner_username=%s
+        ORDER BY id DESC
+        LIMIT %s;
+        """,
+        (owner_username, limit),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
 
-# ------------------------------ Utils UI -----------------------------------
-def qmf_label_and_class(qmf: str):
-    q = (qmf or "F").upper()
-    if q == "Q":
-        return "Quente", "badge-q"
-    if q == "M":
-        return "Morna", "badge-m"
-    return "Fria", "badge-f"
+def inserir_atestado(owner_username: str, mes: date, cliente: str,
+                     projeto_finalizado: str, atestado_conquistado: str):
+    mes_norm = date(mes.year, mes.month, 1)  # primeiro dia do mês
+    conn = get_connection()
+    with conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO app.atestados_educadores
+              (owner_username, mes, cliente, projeto_finalizado, atestado_conquistado)
+            VALUES (%s, %s, %s, %s, %s);
+            """,
+            (owner_username, mes_norm, cliente, projeto_finalizado, atestado_conquistado),
+        )
+    conn.close()
 
+def listar_atestados(owner_username: str, limit: int = 20):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, mes, cliente, projeto_finalizado, atestado_conquistado,
+               criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_local
+        FROM app.atestados_educadores
+        WHERE owner_username=%s
+        ORDER BY id DESC
+        LIMIT %s;
+        """,
+        (owner_username, limit),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
 
+# ---------------------------------------------------------------------------
+# Utils
+# ---------------------------------------------------------------------------
 def format_brl(d: Decimal | None) -> str:
     if d is None:
         return "-"
     s = f"{d:.2f}".replace(".", ",")
     return f"R$ {s}"
 
+def qmf_label_and_class(qmf: str):
+    q = (qmf or "F").upper()
+    if q == "Q": return "Quente", "badge-q"
+    if q == "M": return "Morna", "badge-m"
+    return "Fria", "badge-f"
 
-# ------------------------------ Páginas -------------------------------------
+# ---------------------------------------------------------------------------
+# Páginas
+# ---------------------------------------------------------------------------
 def page_propostas():
     st.subheader("Nova Proposta")
 
@@ -548,7 +446,7 @@ def page_propostas():
         turmas = st.number_input("Turmas *", min_value=1, step=1, value=1)
         head_resp = st.text_input("Head Responsável *", value=st.session_state.usuario or "")
         qmf_map = {"Quente (Q)": "Q", "Morna (M)": "M", "Fria (F)": "F"}
-        qmf_sel = st.selectbox("QMF *", list(qmf_map.keys()), index=1)  # padrão Morna
+        qmf_sel = st.selectbox("QMF *", list(qmf_map.keys()), index=1)
         qmf_code = qmf_map[qmf_sel]
 
     if st.button("Salvar Proposta"):
@@ -560,12 +458,7 @@ def page_propostas():
                 if dec is None:
                     raise InvalidOperation()
                 registrar_proposta(
-                    cliente.strip(),
-                    produto.strip(),
-                    str(dec),
-                    turmas,
-                    head_resp.strip(),
-                    qmf_code,
+                    cliente.strip(), produto.strip(), str(dec), turmas, head_resp.strip(), qmf_code
                 )
                 st.success("✅ Proposta registrada com sucesso!")
             except InvalidOperation:
@@ -601,97 +494,99 @@ def page_propostas():
     else:
         st.info("Nenhuma proposta cadastrada ainda.")
 
-
-def _dict_row(row: psycopg2.extras.DictRow | None) -> dict:
-    """Converte DictRow para dict para usarmos .get com segurança."""
-    return dict(row) if row is not None else {}
-
-
-def obter_educador_resumo(owner_username: str):
-    """Renderiza o cartão-resumo do educador (se existir)."""
-    row = obter_educador_por_owner(owner_username)
-    if not row:
-        return
-    d = _dict_row(row)
-    data_fmt = d.get("data_reuniao").strftime("%d/%m/%Y") if d.get("data_reuniao") else "-"
-    valor_fmt = format_brl(d.get("valor_projeto"))
-    st.markdown(
-        f"""
-        <div class="card">
-          <div><strong>Educador:</strong> {d.get('educador') or owner_username}</div>
-          <div><strong>Empresa:</strong> {d.get('empresa_reuniao') or '-'}</div>
-          <div><strong>Data da reunião:</strong> {data_fmt}</div>
-          <div><strong>Contato:</strong> {d.get('contato') or '-'}</div>
-          <div><strong>Telefone:</strong> {d.get('telefone_contato') or '-'}</div>
-          <div><strong>UF:</strong> {d.get('uf') or '-'}</div>
-          <div><strong>Projetos:</strong> {(d.get('projetos') or '-').replace('\n','<br>')}</div>
-          <div><strong>Valor do projeto:</strong> {valor_fmt}</div>
-          <div><strong>Atestados:</strong> {(d.get('atestados') or '-').replace('\n','<br>')}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def page_educador_meu_painel():
-    """Painel pessoal do Educador com os campos solicitados."""
+def page_educador():
+    """Novo Painel Educadores – conforme layout solicitado."""
     st.subheader("Painel Educadores")
     st.caption(f"Logado como **{st.session_state.usuario}**")
 
-    ficha = obter_educador_por_owner(st.session_state.usuario)
-    d = _dict_row(ficha)
+    colA, colB = st.columns(2)
 
-    st.markdown("### 📝 Registro")
-    with st.form("form_educador"):
-        col1, col2 = st.columns(2)
-        with col1:
-            empresa_reuniao = st.text_input("Reunião efetiva (empresa)", value=d.get("empresa_reuniao", ""))
-            data_value = d.get("data_reuniao") or date.today()
-            data_reuniao = st.date_input("Data da reunião", value=data_value, format="DD/MM/YYYY")
-            contato = st.text_input("Contato da empresa (nome)", value=d.get("contato", ""))
-            telefone_contato = st.text_input(
-                "Telefone do contato (BR)",
-                value=d.get("telefone_contato", ""),
-                placeholder="(11) 91234-5678",
-            )
-        with col2:
-            projetos = st.text_area("Projetos", value=d.get("projetos", ""))
-            valor_projeto_str = st.text_input(
-                "Valor do projeto",
-                value=(format_brl(d.get("valor_projeto")) if d.get("valor_projeto") is not None else ""),
-                placeholder="Ex: 1.234,56 ou 1234,56",
-            )
-            atestados = st.text_area("Atestados", value=d.get("atestados", ""))
-            uf = st.text_input("UF", max_chars=2, value=d.get("uf", "") or "")
-        _ = st.text_input("Educador", value=st.session_state.usuario, disabled=True)
-        salvar = st.form_submit_button("Salvar")
+    # ------------------------- Reunião Efetivada -------------------------
+    with colA:
+        st.markdown("## Reunião Efetivada")
+        with st.form("form_reuniao"):
+            data_reuniao = st.date_input("Data:", value=date.today(), format="DD/MM/YYYY")
+            cliente_r = st.text_input("Cliente:")
+            responsavel_r = st.text_input("Responsável:", value=st.session_state.usuario)
+            salvar_reuniao = st.form_submit_button("Adicionar Reunião")
+        if salvar_reuniao:
+            if not (cliente_r.strip() and responsavel_r.strip()):
+                st.error("Preencha Cliente e Responsável.")
+            else:
+                try:
+                    inserir_reuniao(st.session_state.usuario, data_reuniao, cliente_r.strip(), responsavel_r.strip())
+                    st.success("Reunião registrada!")
+                except Exception as e:
+                    st.error(f"Erro ao salvar: {e}")
 
-    if salvar:
-        try:
-            upsert_educador(
-                owner_username=st.session_state.usuario,
-                empresa_reuniao=empresa_reuniao.strip(),
-                data_reuniao=data_reuniao,
-                contato=contato.strip(),
-                telefone_contato=telefone_contato.strip(),
-                projetos=projetos.strip(),
-                valor_projeto_str=valor_projeto_str.strip(),
-                atestados=atestados.strip(),
-                uf=(uf or "").strip().upper()[:2],
-                educador=st.session_state.usuario,
-            )
-            st.success("Registro salvo/atualizado!")
-            st.rerun()
-        except ValueError as ve:
-            st.error(str(ve))
-        except Exception as e:
-            st.error(f"Erro ao salvar: {e}")
+        # lista
+        st.markdown("#### Últimas reuniões")
+        reunioes = listar_reunioes(st.session_state.usuario, limit=10)
+        if not reunioes:
+            st.info("Sem reuniões registradas ainda.")
+        else:
+            for rid, rdata, rcli, rresp, rcriado in reunioes:
+                dt = rdata.strftime("%d/%m/%Y") if isinstance(rdata, (date, datetime)) else str(rdata)
+                st.markdown(
+                    f"""
+                    <div class="card">
+                      <div><strong>Data:</strong> {dt}</div>
+                      <div><strong>Cliente:</strong> {rcli}</div>
+                      <div><strong>Responsável:</strong> {rresp}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-    # Cartão-resumo
-    obter_educador_resumo(st.session_state.usuario)
+    # ------------------------------ Atestados -----------------------------
+    with colB:
+        st.markdown("## Atestados")
+        with st.form("form_atestado"):
+            mes_a = st.date_input("Mês:", value=date.today().replace(day=1), format="DD/MM/YYYY")
+            cliente_a = st.text_input("Cliente:")
+            projeto_finalizado = st.text_input("Projeto Finalizado:")
+            atestado_conquistado = st.text_input("Atestado Conquistado:")
+            salvar_atestado = st.form_submit_button("Adicionar Atestado")
 
+        if salvar_atestado:
+            if not (cliente_a.strip() and projeto_finalizado.strip() and atestado_conquistado.strip()):
+                st.error("Preencha Cliente, Projeto Finalizado e Atestado Conquistado.")
+            else:
+                try:
+                    inserir_atestado(
+                        st.session_state.usuario,
+                        mes_a,
+                        cliente_a.strip(),
+                        projeto_finalizado.strip(),
+                        atestado_conquistado.strip(),
+                    )
+                    st.success("Atestado registrado!")
+                except Exception as e:
+                    st.error(f"Erro ao salvar: {e}")
 
-# --------------------------- Admin: Usuários (helpers banco) ---------------
+        # lista
+        st.markdown("#### Últimos atestados")
+        atestados = listar_atestados(st.session_state.usuario, limit=10)
+        if not atestados:
+            st.info("Sem atestados registrados ainda.")
+        else:
+            for aid, ames, acli, aproj, aatest, acriado in atestados:
+                mes_fmt = ames.strftime("%m/%Y") if isinstance(ames, (date, datetime)) else str(ames)
+                st.markdown(
+                    f"""
+                    <div class="card">
+                      <div><strong>Mês:</strong> {mes_fmt}</div>
+                      <div><strong>Cliente:</strong> {acli}</div>
+                      <div><strong>Projeto Finalizado:</strong> {aproj}</div>
+                      <div><strong>Atestado Conquistado:</strong> {aatest}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+# ---------------------------------------------------------------------------
+# Admin: Usuários
+# ---------------------------------------------------------------------------
 def criar_usuario(username, senha, role):
     senha_hash = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     conn = get_connection()
@@ -706,32 +601,6 @@ def criar_usuario(username, senha, role):
         )
     conn.close()
 
-
-def set_user_active(username, active: bool):
-    conn = get_connection()
-    with conn, conn.cursor() as cur:
-        cur.execute("UPDATE app.usuarios SET is_active=%s WHERE username=%s;", (active, username))
-    conn.close()
-
-
-def resetar_senha(username, nova_senha):
-    senha_hash = bcrypt.hashpw(nova_senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    conn = get_connection()
-    with conn, conn.cursor() as cur:
-        cur.execute(
-            "UPDATE app.usuarios SET senha_hash=%s, must_change=FALSE WHERE username=%s;",
-            (senha_hash, username),
-        )
-    conn.close()
-
-
-def renomear_usuario(antigo, novo):
-    conn = get_connection()
-    with conn, conn.cursor() as cur:
-        cur.execute("UPDATE app.usuarios SET username=%s WHERE username=%s;", (novo, antigo))
-    conn.close()
-
-
 def listar_usuarios():
     conn = get_connection()
     cur = conn.cursor()
@@ -741,8 +610,9 @@ def listar_usuarios():
     conn.close()
     return rows
 
-
-# ------------------------------ APP ----------------------------------------
+# ---------------------------------------------------------------------------
+# APP
+# ---------------------------------------------------------------------------
 st.set_page_config(page_title="Yassaka", layout="centered")
 inject_theme()
 ensure_schema()
@@ -754,16 +624,11 @@ if "usuario" not in st.session_state:
 if "role" not in st.session_state:
     st.session_state.role = "user"
 
-# --------- Título por contexto ---------
+# Título (login ou será definido pela aba)
 if not st.session_state.autenticado:
     st.title("Yassaka")
-else:
-    if st.session_state.role == "educador":
-        st.title("Painel Educadores")
-    else:
-        st.title("Propostas")
 
-# --------- Login ---------
+# Login
 if not st.session_state.autenticado:
     st.subheader("Login")
     user = st.text_input("Usuário")
@@ -779,31 +644,44 @@ if not st.session_state.autenticado:
         else:
             st.error("Usuário ou senha inválidos")
 
-# --------- Área autenticada ---------
+# Área autenticada
 else:
     role = st.session_state.role
     st.sidebar.write(f"👤 Usuário: {st.session_state.usuario} ({role})")
 
     if role == "educador":
+        # Educador: só a tela dele
+        st.title("Painel Educadores")
         if st.sidebar.button("Sair"):
             st.session_state.clear()
             st.rerun()
-        page_educador_meu_painel()
+        page_educador()
+
     else:
+        # Admin/User: abas
         abas = ["Propostas"]
         if role == "admin":
+            abas.insert(1, "Educadores")     # admin também vê a tela de educadores
             abas.append("Admin: Usuários")
+
         aba = st.sidebar.radio("Navegação", abas)
 
         if st.sidebar.button("Sair"):
             st.session_state.clear()
             st.rerun()
 
+        # título dinâmico por aba
         if aba == "Propostas":
+            st.title("Propostas")
             page_propostas()
-        elif aba == "Admin: Usuários":
-            st.subheader("👑 Administração de Usuários")
 
+        elif aba == "Educadores":
+            st.title("Painel Educadores")
+            page_educador()
+
+        elif aba == "Admin: Usuários":
+            st.title("Admin: Usuários")
+            st.subheader("👑 Administração de Usuários")
             st.markdown("#### Criar novo usuário")
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -835,7 +713,7 @@ else:
             except Exception as e:
                 st.error(f"Erro ao listar: {e}")
 
-# --------- Rodapé ----------
+# Rodapé
 st.markdown(
     '<div class="yassaka-footer">© Yassaka – Todos os direitos reservados</div>',
     unsafe_allow_html=True,
