@@ -9,6 +9,13 @@ import psycopg2
 import psycopg2.extras
 import streamlit as st
 
+# Carrega .env (facilita local)
+try:
+    from dotenv import load_dotenv  # pip install python-dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 # ---------------------------------------------------------------------------
 # Config: pega a URL do Neon dos Secrets ou do ambiente
 # ---------------------------------------------------------------------------
@@ -32,7 +39,7 @@ def _validate_url(url: str):
     return parsed
 
 # ---------------------------------------------------------------------------
-# Tema (paleta Yassaka – claro)
+# Tema (paleta Yassaka – claro) + UX
 # ---------------------------------------------------------------------------
 def inject_theme():
     ROXO = "#6C42D3"
@@ -46,25 +53,26 @@ def inject_theme():
     st.markdown(
         f"""
     <style>
+      /* App */
       .stApp {{
         background: linear-gradient(180deg, {BG_APP} 0%, #ffffff 100%) !important;
         color: {TEXTO} !important;
       }}
 
-      /* cabeçalho */
+      /* Header */
       header[data-testid="stHeader"] {{
         background: {ROXO} !important;
         color: white !important;
         border-bottom: 3px solid {AMARELO};
       }}
 
-      /* sidebar */
+      /* Sidebar */
       section[data-testid="stSidebar"] {{
         background: #FAFAFA !important;
         border-right: 2px solid {ROXO};
       }}
 
-      /* títulos */
+      /* Títulos */
       h1, h2, h3, h4, h5, h6 {{
         color: {ROXO} !important;
         font-weight: 700 !important;
@@ -77,18 +85,33 @@ def inject_theme():
         margin-top: 4px;
       }}
 
-      /* cards */
+      /* Painéis grandes (cards principais) */
+      .panel {{
+        background: {BG_CARD};
+        color: {TEXTO};
+        padding: 22px 24px;
+        border-radius: 18px;
+        border: 1px solid {ROXO}22;
+        box-shadow: 0 6px 20px rgba(108,66,211,0.12);
+        margin-bottom: 22px;
+      }}
+      .panel h2 {{
+        margin-top: 4px !important;
+        margin-bottom: 18px !important;
+      }}
+
+      /* Subcards (itens de lista) */
       .card {{
         background: {BG_CARD};
         color: {TEXTO};
         padding: 14px 16px;
         border-radius: 14px;
-        margin-bottom: 14px;
-        border: 1px solid {ROXO};
-        box-shadow: 0 2px 6px rgba(108,66,211,0.15);
+        margin: 10px 0 14px 0;
+        border: 1px solid {ROXO}33;
+        box-shadow: 0 2px 6px rgba(108,66,211,0.10);
       }}
 
-      /* inputs – base */
+      /* Inputs */
       .stTextInput input,
       .stPassword input,
       .stNumberInput input,
@@ -96,59 +119,35 @@ def inject_theme():
       textarea,
       .stSelectbox [data-baseweb="select"] input {{
         border: 2px solid #ddd !important;
-        border-radius: 10px !important;
-        padding: 6px !important;
+        border-radius: 12px !important;
+        padding: 8px 10px !important;
         box-shadow: none !important;
         outline: none !important;
         background: #FFFFFF !important;
         color: #1F1F1F !important;
       }}
 
-      /* foco */
+      /* Foco */
       .stTextInput input:focus,
       .stPassword input:focus,
       .stNumberInput input:focus,
       .stDateInput input:focus,
       textarea:focus {{
         border: 2px solid {ROXO} !important;
-        box-shadow: 0 0 4px {AMARELO} !important;
+        box-shadow: 0 0 6px {AMARELO}66 !important;
         outline: none !important;
       }}
 
-      /* invalid */
-      .stTextInput input:invalid,
-      .stPassword input:invalid,
-      .stNumberInput input:invalid,
-      .stDateInput input:invalid,
-      textarea:invalid,
-      .stSelectbox [data-baseweb="select"] input:invalid,
-      .stTextInput input[aria-invalid="true"],
-      .stPassword input[aria-invalid="true"],
-      .stNumberInput input[aria-invalid="true"],
-      .stDateInput input[aria-invalid="true"] {{
-        border: 2px solid #ddd !important;
-        box-shadow: none !important;
-        outline: none !important;
-      }}
-
-      /* focus visible */
-      .stTextInput input:focus-visible,
-      .stPassword input:focus-visible,
-      .stNumberInput input:focus-visible,
-      .stDateInput input:focus-visible,
-      textarea:focus-visible {{
-        outline: none !important;
-        box-shadow: 0 0 4px {AMARELO} !important;
-      }}
-
-      /* botões */
+      /* Botões */
       .stButton>button {{
         background: {ROXO} !important;
         color: white !important;
-        border-radius: 10px !important;
+        border-radius: 12px !important;
         border: none !important;
         font-weight: 600 !important;
-        transition: all 0.3s ease-in-out;
+        padding: 10px 16px !important;
+        transition: all 0.25s ease-in-out;
+        margin-top: 6px !important;
       }}
       .stButton>button:hover {{
         background: {AMARELO} !important;
@@ -156,7 +155,7 @@ def inject_theme():
         transform: translateY(-2px);
       }}
 
-      /* badges (usadas no histórico) */
+      /* Badges (QMF) */
       .badge {{
         padding: 4px 10px;
         border-radius: 999px;
@@ -168,7 +167,19 @@ def inject_theme():
       .badge-m {{ background: {ROXO}; color: white; }}
       .badge-f {{ background: {CINZA_M}; color: white; }}
 
-      /* rodapé */
+      /* Sessões dentro do painel esquerdo */
+      .section-title {{
+        margin: 6px 0 8px 0 !important;
+        color: {ROXO};
+      }}
+      .section-sep {{
+        height: 1px;
+        width: 100%;
+        background: {ROXO}22;
+        margin: 12px 0 14px 0;
+      }}
+
+      /* Rodapé fixo */
       .yassaka-footer {{
         position: fixed;
         left: 0; right: 0; bottom: 0;
@@ -245,6 +256,19 @@ def ensure_schema():
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS app.reunioes_efetivadas (
+              id              SERIAL PRIMARY KEY,
+              owner_username  VARCHAR(100) NOT NULL,
+              data            DATE NOT NULL,
+              cliente         VARCHAR(200) NOT NULL,
+              responsavel     VARCHAR(150) NOT NULL,
+              criado_em       TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            """
+        )
+        # Contatos efetivos (NOVA)
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app.contatos_efetivos (
               id              SERIAL PRIMARY KEY,
               owner_username  VARCHAR(100) NOT NULL,
               data            DATE NOT NULL,
@@ -382,35 +406,76 @@ def listar_reunioes(owner_username: str, limit: int = 20):
     conn.close()
     return rows
 
-def inserir_atestado(owner_username: str, mes: date, cliente: str,
-                     projeto_finalizado: str, atestado_conquistado: str):
-    mes_norm = date(mes.year, mes.month, 1)  # primeiro dia do mês
+def listar_reunioes_visiveis(usuario_logado: str, role: str, limit: int = 20):
+    conn = get_connection()
+    cur = conn.cursor()
+    if role == "admin":
+        cur.execute(
+            """
+            SELECT id, data, cliente, responsavel,
+                   criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_local
+            FROM app.reunioes_efetivadas
+            ORDER BY id DESC
+            LIMIT %s;
+            """,
+            (limit,),
+        )
+    else:
+        cur.execute(
+            """
+            SELECT id, data, cliente, responsavel,
+                   criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_local
+            FROM app.reunioes_efetivadas
+            WHERE owner_username=%s
+            ORDER BY id DESC
+            LIMIT %s;
+            """,
+            (usuario_logado, limit),
+        )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+# --------- Contatos Efetivos ---------
+def inserir_contato(owner_username: str, data_contato: date, cliente: str, responsavel: str):
     conn = get_connection()
     with conn, conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO app.atestados_educadores
-              (owner_username, mes, cliente, projeto_finalizado, atestado_conquistado)
-            VALUES (%s, %s, %s, %s, %s);
+            INSERT INTO app.contatos_efetivos (owner_username, data, cliente, responsavel)
+            VALUES (%s, %s, %s, %s);
             """,
-            (owner_username, mes_norm, cliente, projeto_finalizado, atestado_conquistado),
+            (owner_username, data_contato, cliente, responsavel),
         )
     conn.close()
 
-def listar_atestados(owner_username: str, limit: int = 20):
+def listar_contatos_visiveis(usuario_logado: str, role: str, limit: int = 20):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT id, mes, cliente, projeto_finalizado, atestado_conquistado,
-               criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_local
-        FROM app.atestados_educadores
-        WHERE owner_username=%s
-        ORDER BY id DESC
-        LIMIT %s;
-        """,
-        (owner_username, limit),
-    )
+    if role == "admin":
+        cur.execute(
+            """
+            SELECT id, data, cliente, responsavel,
+                   criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_local
+            FROM app.contatos_efetivos
+            ORDER BY id DESC
+            LIMIT %s;
+            """,
+            (limit,),
+        )
+    else:
+        cur.execute(
+            """
+            SELECT id, data, cliente, responsavel,
+                   criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_local
+            FROM app.contatos_efetivos
+            WHERE owner_username=%s
+            ORDER BY id DESC
+            LIMIT %s;
+            """,
+            (usuario_logado, limit),
+        )
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -435,64 +500,165 @@ def qmf_label_and_class(qmf: str):
 # Páginas
 # ---------------------------------------------------------------------------
 def page_propostas():
-    st.subheader("Nova Proposta")
+    st.markdown("## Propostas & Atividades")
+    col_esq, col_dir = st.columns([1.15, 1.55], gap="large")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        cliente = st.text_input("Cliente *")
-        produto = st.text_input("Produto *")
-        valor_str = st.text_input("Valor (ex: 1234,56) *")
-    with c2:
-        turmas = st.number_input("Turmas *", min_value=1, step=1, value=1)
-        head_resp = st.text_input("Head Responsável *", value=st.session_state.usuario or "")
-        qmf_map = {"Quente (Q)": "Q", "Morna (M)": "M", "Fria (F)": "F"}
-        qmf_sel = st.selectbox("QMF *", list(qmf_map.keys()), index=1)
-        qmf_code = qmf_map[qmf_sel]
+    # --------------------------- PAINEL ESQUERDO ---------------------------
+    with col_esq:
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        st.markdown("## Atividades Comerciais")
 
-    if st.button("Salvar Proposta"):
-        if not (cliente.strip() and produto.strip() and valor_str.strip() and head_resp.strip() and qmf_code):
-            st.error("Preencha todos os campos obrigatórios (*)")
+        # Contatos Efetivos
+        st.markdown('<div class="section-title">📞 Contatos Efetivos</div>', unsafe_allow_html=True)
+        with st.form("form_contato_efetivo"):
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                data_c = st.date_input("Data do contato:", value=date.today(), format="DD/MM/YYYY")
+            with c2:
+                cliente_c = st.text_input("Cliente (contato):")
+            salvar_c = st.form_submit_button("➕ Adicionar Contato Efetivo")
+        if salvar_c:
+            if not cliente_c.strip():
+                st.error("Informe o cliente.")
+            else:
+                try:
+                    inserir_contato(
+                        st.session_state.usuario,
+                        data_c,
+                        cliente_c.strip(),
+                        st.session_state.usuario,
+                    )
+                    st.success("Contato efetivo registrado!")
+                except Exception as e:
+                    st.error(f"Erro ao salvar contato: {e}")
+
+        contatos = listar_contatos_visiveis(st.session_state.usuario, st.session_state.get("role","user"), limit=8)
+        st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
+        st.markdown("#### Últimos contatos")
+        if not contatos:
+            st.info("Sem contatos registrados ainda.")
         else:
-            try:
-                dec = _parse_valor_brl(valor_str)
-                if dec is None:
-                    raise InvalidOperation()
-                registrar_proposta(
-                    cliente.strip(), produto.strip(), str(dec), turmas, head_resp.strip(), qmf_code
+            for cid, cdata, ccli, cresp, _ in contatos:
+                dt = cdata.strftime("%d/%m/%Y") if isinstance(cdata, (date, datetime)) else str(cdata)
+                st.markdown(
+                    f"""
+                    <div class="card">
+                      <strong>📅 {dt}</strong><br>
+                      Cliente: {ccli}<br>
+                      Responsável: {cresp}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
-                st.success("✅ Proposta registrada com sucesso!")
-            except InvalidOperation:
-                st.error("Valor inválido. Use números (ex: 1234,56).")
-            except Exception as e:
-                st.error(f"Erro ao salvar: {e}")
 
-    st.markdown("### Últimas propostas")
-    linhas = listar_propostas(st.session_state.usuario, st.session_state.get("role", "user"))
+        # Reuniões Realizadas
+        st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">🤝 Reuniões Realizadas</div>', unsafe_allow_html=True)
+        with st.form("form_reuniao_propostas"):
+            r1, r2 = st.columns([1, 2])
+            with r1:
+                data_r = st.date_input("Data da reunião:", value=date.today(), format="DD/MM/YYYY", key="dt_reuniao_propostas")
+            with r2:
+                cliente_r = st.text_input("Cliente (reunião):", key="cli_reuniao_propostas")
+            salvar_r = st.form_submit_button("➕ Adicionar Reunião Realizada")
+        if salvar_r:
+            if not cliente_r.strip():
+                st.error("Informe o cliente da reunião.")
+            else:
+                try:
+                    inserir_reuniao(
+                        st.session_state.usuario,
+                        data_r,
+                        cliente_r.strip(),
+                        st.session_state.usuario,
+                    )
+                    st.success("Reunião registrada!")
+                except Exception as e:
+                    st.error(f"Erro ao salvar reunião: {e}")
 
-    if st.session_state.get("role") == "admin":
-        st.caption("🟢 Exibindo **todas** as propostas (admin).")
-    else:
-        st.caption(f"🟡 Exibindo **apenas suas** propostas: {st.session_state.usuario}.")
+        reunioes = listar_reunioes_visiveis(st.session_state.usuario, st.session_state.get("role","user"), limit=8)
+        st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
+        st.markdown("#### Últimas reuniões")
+        if not reunioes:
+            st.info("Sem reuniões registradas ainda.")
+        else:
+            for rid, rdata, rcli, rresp, _ in reunioes:
+                dt = rdata.strftime("%d/%m/%Y") if isinstance(rdata, (date, datetime)) else str(rdata)
+                st.markdown(
+                    f"""
+                    <div class="card">
+                      <strong>📅 {dt}</strong><br>
+                      Cliente: {rcli}<br>
+                      Responsável: {rresp}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        st.markdown('</div>', unsafe_allow_html=True)  # fecha panel esquerdo
 
-    if linhas:
-        for pid, pcl, pprod, pval, ptur, phead, pqmf, pdt in linhas:
-            label, klass = qmf_label_and_class(pqmf)
-            try:
-                pval_dec = Decimal(pval).quantize(Decimal("0.01"))
-            except Exception:
-                pval_dec = None
-            dt_fmt = pdt.strftime("%d/%m/%Y %H:%M") if hasattr(pdt, "strftime") else str(pdt)
-            st.markdown(
-                f"""
-                <div class="card">
-                  <div><span class="badge {klass}">{label}</span></div>
-                  <div><strong>#{pid}</strong> — {pcl} | {pprod} | {format_brl(pval_dec)} | turmas: {ptur} | head: {phead} | {dt_fmt}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-    else:
-        st.info("Nenhuma proposta cadastrada ainda.")
+    # --------------------------- PAINEL DIREITO ---------------------------
+    with col_dir:
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        st.markdown("## Nova Proposta")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            cliente = st.text_input("Cliente *")
+            produto = st.text_input("Produto *")
+            valor_str = st.text_input("Valor (ex: 1234,56) *")
+        with c2:
+            turmas = st.number_input("Turmas *", min_value=1, step=1, value=1)
+            head_resp = st.text_input("Head Responsável *", value=st.session_state.usuario or "")
+            qmf_map = {"Quente (Q)": "Q", "Morna (M)": "M", "Fria (F)": "F"}
+            qmf_sel = st.selectbox("QMF *", list(qmf_map.keys()), index=1)
+            qmf_code = qmf_map[qmf_sel]
+
+        if st.button("💾 Salvar Proposta"):
+            if not (cliente.strip() and produto.strip() and valor_str.strip() and head_resp.strip() and qmf_code):
+                st.error("Preencha todos os campos obrigatórios (*)")
+            else:
+                try:
+                    dec = _parse_valor_brl(valor_str)
+                    if dec is None:
+                        raise InvalidOperation()
+                    registrar_proposta(
+                        cliente.strip(), produto.strip(), str(dec), turmas, head_resp.strip(), qmf_code
+                    )
+                    st.success("✅ Proposta registrada com sucesso!")
+                except InvalidOperation:
+                    st.error("Valor inválido. Use números (ex: 1234,56).")
+                except Exception as e:
+                    st.error(f"Erro ao salvar: {e}")
+
+        st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
+        st.markdown("### Últimas propostas")
+        linhas = listar_propostas(st.session_state.usuario, st.session_state.get("role", "user"))
+
+        if st.session_state.get("role") == "admin":
+            st.caption("🟢 Exibindo **todas** as propostas (admin).")
+        else:
+            st.caption(f"🟡 Exibindo **apenas suas** propostas: {st.session_state.usuario}.")
+
+        if linhas:
+            for pid, pcl, pprod, pval, ptur, phead, pqmf, pdt in linhas:
+                label, klass = qmf_label_and_class(pqmf)
+                try:
+                    pval_dec = Decimal(pval).quantize(Decimal("0.01"))
+                except Exception:
+                    pval_dec = None
+                dt_fmt = pdt.strftime("%d/%m/%Y %H:%M") if hasattr(pdt, "strftime") else str(pdt)
+                st.markdown(
+                    f"""
+                    <div class="card">
+                      <div><span class="badge {klass}">{label}</span></div>
+                      <div><strong>#{pid}</strong> — {pcl} | {pprod} | {format_brl(pval_dec)} | turmas: {ptur} | head: {phead} | {dt_fmt}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.info("Nenhuma proposta cadastrada ainda.")
+        st.markdown('</div>', unsafe_allow_html=True)  # fecha panel direito
 
 def page_educador():
     """Novo Painel Educadores – conforme layout solicitado."""
@@ -515,11 +681,10 @@ def page_educador():
             else:
                 try:
                     inserir_reuniao(st.session_state.usuario, data_reuniao, cliente_r.strip(), responsavel_r.strip())
-                    st.success("Reunião registrada!")
+                    st.success("Reunião registrado!")
                 except Exception as e:
                     st.error(f"Erro ao salvar: {e}")
 
-        # lista
         st.markdown("#### Últimas reuniões")
         reunioes = listar_reunioes(st.session_state.usuario, limit=10)
         if not reunioes:
@@ -564,7 +729,6 @@ def page_educador():
                 except Exception as e:
                     st.error(f"Erro ao salvar: {e}")
 
-        # lista
         st.markdown("#### Últimos atestados")
         atestados = listar_atestados(st.session_state.usuario, limit=10)
         if not atestados:
@@ -613,7 +777,7 @@ def listar_usuarios():
 # ---------------------------------------------------------------------------
 # APP
 # ---------------------------------------------------------------------------
-st.set_page_config(page_title="Yassaka", layout="centered")
+st.set_page_config(page_title="Yassaka", layout="wide")  # <<< wide para melhor uso do espaço
 inject_theme()
 ensure_schema()
 
@@ -672,7 +836,6 @@ else:
 
         # título dinâmico por aba
         if aba == "Propostas":
-            st.title("Propostas")
             page_propostas()
 
         elif aba == "Educadores":
