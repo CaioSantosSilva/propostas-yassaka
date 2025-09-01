@@ -788,12 +788,12 @@ def page_educador():
 # ---------------------------------------------------------------------------
 def page_powerbi():
     st.title("Painel: Power BI")
-    st.caption("Relatório incorporado do Power BI.")
+    st.caption("Relatório incorporado do Power BI (via conta espelho).")
 
     iframe_html = """
     <div style="width:100%; max-width:1600px; margin:0 auto;">
       <div style="position:relative; padding-bottom:66.66%; height:0; overflow:hidden; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,0.08); border:1px solid #eaeaea;">
-        <iframe title="Area 51 Dash"
+        <iframe title="Relatório"
           src="https://app.powerbi.com/reportEmbed?reportId=1a46a7ac-fed5-4b13-a480-bfb3b4502c40&autoAuth=true&ctid=0866dfb4-d751-4833-a436-3f4607910b2a"
           frameborder="0" allowFullScreen="true"
           style="position:absolute; top:0; left:0; width:100%; height:100%;">
@@ -802,6 +802,7 @@ def page_powerbi():
     </div>
     """
     components.html(iframe_html, height=700, scrolling=True)
+
 
 # ---------------------------------------------------------------------------
 # Admin: Usuários
