@@ -8,6 +8,7 @@ import bcrypt
 import psycopg2
 import psycopg2.extras
 import streamlit as st
+import streamlit.components.v1 as components  # <<< ADICIONADO: para o iframe do Power BI
 
 # Carrega .env (facilita local)
 try:
@@ -481,6 +482,40 @@ def listar_contatos_visiveis(usuario_logado: str, role: str, limit: int = 20):
     conn.close()
     return rows
 
+# --------- Atestados (NOVO) ---------
+def inserir_atestado(owner_username: str, mes: date, cliente: str,
+                     projeto_finalizado: str, atestado_conquistado: str):
+    conn = get_connection()
+    with conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO app.atestados_educadores
+                (owner_username, mes, cliente, projeto_finalizado, atestado_conquistado)
+            VALUES (%s, %s, %s, %s, %s);
+            """,
+            (owner_username, mes, cliente, projeto_finalizado, atestado_conquistado),
+        )
+    conn.close()
+
+def listar_atestados(owner_username: str, limit: int = 20):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, mes, cliente, projeto_finalizado, atestado_conquistado,
+               criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_local
+        FROM app.atestados_educadores
+        WHERE owner_username=%s
+        ORDER BY id DESC
+        LIMIT %s;
+        """,
+        (owner_username, limit),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
 # ---------------------------------------------------------------------------
 # Utils
 # ---------------------------------------------------------------------------
@@ -749,6 +784,26 @@ def page_educador():
                 )
 
 # ---------------------------------------------------------------------------
+# NOVA PÁGINA: Painel Power BI
+# ---------------------------------------------------------------------------
+def page_powerbi():
+    st.title("Painel: Power BI")
+    st.caption("Relatório incorporado do Power BI.")
+
+    iframe_html = """
+    <div style="width:100%; max-width:1600px; margin:0 auto;">
+      <div style="position:relative; padding-bottom:66.66%; height:0; overflow:hidden; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,0.08); border:1px solid #eaeaea;">
+        <iframe title="Area 51 Dash"
+          src="https://app.powerbi.com/reportEmbed?reportId=1a46a7ac-fed5-4b13-a480-bfb3b4502c40&autoAuth=true&ctid=0866dfb4-d751-4833-a436-3f4607910b2a"
+          frameborder="0" allowFullScreen="true"
+          style="position:absolute; top:0; left:0; width:100%; height:100%;">
+        </iframe>
+      </div>
+    </div>
+    """
+    components.html(iframe_html, height=700, scrolling=True)
+
+# ---------------------------------------------------------------------------
 # Admin: Usuários
 # ---------------------------------------------------------------------------
 def criar_usuario(username, senha, role):
@@ -823,7 +878,7 @@ else:
 
     else:
         # Admin/User: abas
-        abas = ["Propostas"]
+        abas = ["Propostas", "Painel: Power BI"]  # <<< ADICIONADO
         if role == "admin":
             abas.insert(1, "Educadores")     # admin também vê a tela de educadores
             abas.append("Admin: Usuários")
@@ -837,6 +892,9 @@ else:
         # título dinâmico por aba
         if aba == "Propostas":
             page_propostas()
+
+        elif aba == "Painel: Power BI":      # <<< ADICIONADO
+            page_powerbi()
 
         elif aba == "Educadores":
             st.title("Painel Educadores")
