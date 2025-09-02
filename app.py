@@ -8,18 +8,20 @@ import bcrypt
 import psycopg2
 import psycopg2.extras
 import streamlit as st
-import streamlit.components.v1 as components  # <<< ADICIONADO: para o iframe do Power BI
+import streamlit.components.v1 as components
 
-# Carrega .env (facilita local)
+# ----------------------------------------------------------------------------
+# Carrega .env (facilita local) — opcional
+# ----------------------------------------------------------------------------
 try:
     from dotenv import load_dotenv  # pip install python-dotenv
     load_dotenv()
 except Exception:
     pass
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # Config: pega a URL do Neon dos Secrets ou do ambiente
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 def _get_neon_url():
     try:
         if "NEON_URL" in st.secrets:
@@ -28,6 +30,7 @@ def _get_neon_url():
         pass
     if os.getenv("NEON_URL"):
         return os.getenv("NEON_URL")
+    # Valor de exemplo (NÃO USAR EM PRODUÇÃO)
     return "postgresql://neondb_owner:troque_aqui@ep-xxxx.../neondb?sslmode=require"
 
 NEON_URL = _get_neon_url()
@@ -39,9 +42,9 @@ def _validate_url(url: str):
     assert parsed.hostname, "Hostname ausente na URL."
     return parsed
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # Tema (paleta Yassaka – claro) + UX
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 def inject_theme():
     ROXO = "#6C42D3"
     AMARELO = "#FCC52C"
@@ -54,26 +57,19 @@ def inject_theme():
     st.markdown(
         f"""
     <style>
-      /* App */
       .stApp {{
         background: linear-gradient(180deg, {BG_APP} 0%, #ffffff 100%) !important;
         color: {TEXTO} !important;
       }}
-
-      /* Header */
       header[data-testid="stHeader"] {{
         background: {ROXO} !important;
         color: white !important;
         border-bottom: 3px solid {AMARELO};
       }}
-
-      /* Sidebar */
       section[data-testid="stSidebar"] {{
         background: #FAFAFA !important;
         border-right: 2px solid {ROXO};
       }}
-
-      /* Títulos */
       h1, h2, h3, h4, h5, h6 {{
         color: {ROXO} !important;
         font-weight: 700 !important;
@@ -85,8 +81,6 @@ def inject_theme():
         border-bottom: 3px solid {AMARELO};
         margin-top: 4px;
       }}
-
-      /* Painéis grandes (cards principais) */
       .panel {{
         background: {BG_CARD};
         color: {TEXTO};
@@ -96,12 +90,7 @@ def inject_theme():
         box-shadow: 0 6px 20px rgba(108,66,211,0.12);
         margin-bottom: 22px;
       }}
-      .panel h2 {{
-        margin-top: 4px !important;
-        margin-bottom: 18px !important;
-      }}
-
-      /* Subcards (itens de lista) */
+      .panel h2 {{ margin-top: 4px !important; margin-bottom: 18px !important; }}
       .card {{
         background: {BG_CARD};
         color: {TEXTO};
@@ -111,8 +100,6 @@ def inject_theme():
         border: 1px solid {ROXO}33;
         box-shadow: 0 2px 6px rgba(108,66,211,0.10);
       }}
-
-      /* Inputs */
       .stTextInput input,
       .stPassword input,
       .stNumberInput input,
@@ -127,8 +114,6 @@ def inject_theme():
         background: #FFFFFF !important;
         color: #1F1F1F !important;
       }}
-
-      /* Foco */
       .stTextInput input:focus,
       .stPassword input:focus,
       .stNumberInput input:focus,
@@ -138,8 +123,6 @@ def inject_theme():
         box-shadow: 0 0 6px {AMARELO}66 !important;
         outline: none !important;
       }}
-
-      /* Botões */
       .stButton>button {{
         background: {ROXO} !important;
         color: white !important;
@@ -155,8 +138,6 @@ def inject_theme():
         color: {ROXO} !important;
         transform: translateY(-2px);
       }}
-
-      /* Badges (QMF) */
       .badge {{
         padding: 4px 10px;
         border-radius: 999px;
@@ -167,39 +148,25 @@ def inject_theme():
       .badge-q {{ background: {AMARELO}; color: {ROXO}; }}
       .badge-m {{ background: {ROXO}; color: white; }}
       .badge-f {{ background: {CINZA_M}; color: white; }}
-
-      /* Sessões dentro do painel esquerdo */
-      .section-title {{
-        margin: 6px 0 8px 0 !important;
-        color: {ROXO};
-      }}
+      .section-title {{ margin: 6px 0 8px 0 !important; color: {ROXO}; }}
       .section-sep {{
-        height: 1px;
-        width: 100%;
-        background: {ROXO}22;
-        margin: 12px 0 14px 0;
+        height: 1px; width: 100%;
+        background: {ROXO}22; margin: 12px 0 14px 0;
       }}
-
-      /* Rodapé fixo */
       .yassaka-footer {{
-        position: fixed;
-        left: 0; right: 0; bottom: 0;
-        text-align: center;
-        padding: 8px 12px;
-        font-size: 12px;
-        color: white;
-        background: {ROXO};
-        border-top: 3px solid {AMARELO};
-        z-index: 999;
+        position: fixed; left: 0; right: 0; bottom: 0;
+        text-align: center; padding: 8px 12px; font-size: 12px;
+        color: white; background: {ROXO};
+        border-top: 3px solid {AMARELO}; z-index: 999;
       }}
     </style>
     """,
         unsafe_allow_html=True,
     )
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # Conexão / Schema
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 def get_connection():
     _validate_url(NEON_URL)
     return psycopg2.connect(NEON_URL)
@@ -207,10 +174,8 @@ def get_connection():
 def ensure_schema():
     conn = get_connection()
     with conn, conn.cursor() as cur:
-        # schema base
         cur.execute("CREATE SCHEMA IF NOT EXISTS app;")
-
-        # ------------------ usuários (mantido) ------------------
+        # usuários
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS app.usuarios (
@@ -230,8 +195,7 @@ def ensure_schema():
             """ALTER TABLE app.usuarios
                ADD CONSTRAINT usuarios_role_chk CHECK (role IN ('user','admin','educador'));"""
         )
-
-        # ------------------ propostas (mantido) ------------------
+        # propostas
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS app.propostas (
@@ -251,9 +215,7 @@ def ensure_schema():
             """ALTER TABLE app.propostas
                ADD COLUMN IF NOT EXISTS qmf CHAR(1) NOT NULL DEFAULT 'F';"""
         )
-
-        # ------------------ NOVAS TABELAS DO PAINEL ------------------
-        # Reuniões efetivadas
+        # reuniões efetivadas
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS app.reunioes_efetivadas (
@@ -266,7 +228,7 @@ def ensure_schema():
             );
             """
         )
-        # Contatos efetivos (NOVA)
+        # contatos efetivos
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS app.contatos_efetivos (
@@ -279,13 +241,13 @@ def ensure_schema():
             );
             """
         )
-        # Atestados
+        # atestados educadores
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS app.atestados_educadores (
               id                    SERIAL PRIMARY KEY,
               owner_username        VARCHAR(100) NOT NULL,
-              mes                   DATE NOT NULL,          -- guardamos como dia 1 do mês
+              mes                   DATE NOT NULL,
               cliente               VARCHAR(200) NOT NULL,
               projeto_finalizado    TEXT NOT NULL,
               atestado_conquistado  TEXT NOT NULL,
@@ -295,9 +257,9 @@ def ensure_schema():
         )
     conn.close()
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # Autenticação
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 def autenticar_usuario(username, password):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -314,9 +276,9 @@ def autenticar_usuario(username, password):
         return {"username": row["username"], "role": row["role"]}
     return None
 
-# ---------------------------------------------------------------------------
-# Propostas (mantido)
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# Propostas
+# ----------------------------------------------------------------------------
 def _parse_valor_brl(txt: str) -> Decimal | None:
     if not txt:
         return None
@@ -373,9 +335,9 @@ def listar_propostas(usuario_logado, role, limit=50):
     conn.close()
     return rows
 
-# ---------------------------------------------------------------------------
-# PAINEL EDUCADORES — operações
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# Painel Educadores — operações
+# ----------------------------------------------------------------------------
 def inserir_reuniao(owner_username: str, data_reuniao: date, cliente: str, responsavel: str):
     conn = get_connection()
     with conn, conn.cursor() as cur:
@@ -438,7 +400,7 @@ def listar_reunioes_visiveis(usuario_logado: str, role: str, limit: int = 20):
     conn.close()
     return rows
 
-# --------- Contatos Efetivos ---------
+# Contatos efetivos
 def inserir_contato(owner_username: str, data_contato: date, cliente: str, responsavel: str):
     conn = get_connection()
     with conn, conn.cursor() as cur:
@@ -482,7 +444,7 @@ def listar_contatos_visiveis(usuario_logado: str, role: str, limit: int = 20):
     conn.close()
     return rows
 
-# --------- Atestados (NOVO) ---------
+# Atestados
 def inserir_atestado(owner_username: str, mes: date, cliente: str,
                      projeto_finalizado: str, atestado_conquistado: str):
     conn = get_connection()
@@ -516,9 +478,9 @@ def listar_atestados(owner_username: str, limit: int = 20):
     conn.close()
     return rows
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # Utils
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 def format_brl(d: Decimal | None) -> str:
     if d is None:
         return "-"
@@ -531,19 +493,18 @@ def qmf_label_and_class(qmf: str):
     if q == "M": return "Morna", "badge-m"
     return "Fria", "badge-f"
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # Páginas
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 def page_propostas():
     st.markdown("## Propostas & Atividades")
     col_esq, col_dir = st.columns([1.15, 1.55], gap="large")
 
-    # --------------------------- PAINEL ESQUERDO ---------------------------
+    # Esquerda
     with col_esq:
         st.markdown('<div class="panel">', unsafe_allow_html=True)
         st.markdown("## Atividades Comerciais")
 
-        # Contatos Efetivos
         st.markdown('<div class="section-title">📞 Contatos Efetivos</div>', unsafe_allow_html=True)
         with st.form("form_contato_efetivo"):
             c1, c2 = st.columns([1, 2])
@@ -586,7 +547,6 @@ def page_propostas():
                     unsafe_allow_html=True,
                 )
 
-        # Reuniões Realizadas
         st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
         st.markdown('<div class="section-title">🤝 Reuniões Realizadas</div>', unsafe_allow_html=True)
         with st.form("form_reuniao_propostas"):
@@ -629,13 +589,12 @@ def page_propostas():
                     """,
                     unsafe_allow_html=True,
                 )
-        st.markdown('</div>', unsafe_allow_html=True)  # fecha panel esquerdo
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # --------------------------- PAINEL DIREITO ---------------------------
+    # Direita
     with col_dir:
         st.markdown('<div class="panel">', unsafe_allow_html=True)
         st.markdown("## Nova Proposta")
-
         c1, c2 = st.columns(2)
         with c1:
             cliente = st.text_input("Cliente *")
@@ -693,16 +652,13 @@ def page_propostas():
                 )
         else:
             st.info("Nenhuma proposta cadastrada ainda.")
-        st.markdown('</div>', unsafe_allow_html=True)  # fecha panel direito
+        st.markdown('</div>', unsafe_allow_html=True)
 
 def page_educador():
-    """Novo Painel Educadores – conforme layout solicitado."""
     st.subheader("Painel Educadores")
     st.caption(f"Logado como **{st.session_state.usuario}**")
-
     colA, colB = st.columns(2)
 
-    # ------------------------- Reunião Efetivada -------------------------
     with colA:
         st.markdown("## Reunião Efetivada")
         with st.form("form_reuniao"):
@@ -738,7 +694,6 @@ def page_educador():
                     unsafe_allow_html=True,
                 )
 
-    # ------------------------------ Atestados -----------------------------
     with colB:
         st.markdown("## Atestados")
         with st.form("form_atestado"):
@@ -783,30 +738,101 @@ def page_educador():
                     unsafe_allow_html=True,
                 )
 
-# ---------------------------------------------------------------------------
-# NOVA PÁGINA: Painel Power BI
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# NOVA PÁGINA: Painel Power BI (PUBLIC ou ORG)
+# ----------------------------------------------------------------------------
 def page_powerbi():
     st.title("Painel: Power BI")
-    st.caption("Relatório incorporado do Power BI (via conta espelho).")
 
-    iframe_html = """
-    <div style="width:100%; max-width:1600px; margin:0 auto;">
-      <div style="position:relative; padding-bottom:66.66%; height:0; overflow:hidden; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,0.08); border:1px solid #eaeaea;">
-        <iframe title="Relatório"
-          src="https://app.powerbi.com/reportEmbed?reportId=1a46a7ac-fed5-4b13-a480-bfb3b4502c40&autoAuth=true&ctid=0866dfb4-d751-4833-a436-3f4607910b2a"
-          frameborder="0" allowFullScreen="true"
-          style="position:absolute; top:0; left:0; width:100%; height:100%;">
-        </iframe>
-      </div>
-    </div>
-    """
-    components.html(iframe_html, height=700, scrolling=True)
+    # CONFIG via st.secrets (Streamlit Cloud) ou .env local
+    PBI_MODE = st.secrets.get("PBI_MODE", os.getenv("PBI_MODE", "PUBLIC")).upper()
+    # Publish to Web (público): use SOMENTE o trecho após r=
+    PBI_PUBLIC_TOKEN = st.secrets.get("PBI_PUBLIC_TOKEN", os.getenv("PBI_PUBLIC_TOKEN", ""))
+    # Organização (embed para sua org): requer que usuário tenha permissão no relatório
+    PBI_REPORT_ID = st.secrets.get("PBI_REPORT_ID", os.getenv("PBI_REPORT_ID", ""))
+    PBI_GROUP_ID  = st.secrets.get("PBI_GROUP_ID",  os.getenv("PBI_GROUP_ID",  ""))
 
+    st.caption(f"Modo atual: **{PBI_MODE}**")
+    st.markdown(
+        "> **PUBLIC**: usa Publish to Web (grátis e público — qualquer um com o link vê).  \n"
+        "> **ORG**: usa Embed para sua organização (usuário precisa estar logado na Microsoft e ter permissão)."
+    )
 
-# ---------------------------------------------------------------------------
+    if PBI_MODE == "PUBLIC":
+        if not PBI_PUBLIC_TOKEN or PBI_PUBLIC_TOKEN.lower().startswith("https://"):
+            st.error("Configure `PBI_MODE=PUBLIC` e `PBI_PUBLIC_TOKEN` (apenas o trecho após `r=`).")
+            return
+
+        html = f"""
+        <meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
+        <meta name="referrer" content="no-referrer">
+        <div style="width:100%; max-width:1600px; margin:0 auto;">
+          <div id="wrap" style="position:relative; padding-bottom:66.66%; height:0; overflow:hidden; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,0.08); border:1px solid #eaeaea;">
+            <div id="spinner" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.8);font:600 14px system-ui;">
+              Carregando relatório…
+            </div>
+            <iframe id="pbi" title="Relatório" frameborder="0" allowfullscreen="true"
+                    referrerpolicy="no-referrer"
+                    style="position:absolute; top:0; left:0; width:100%; height:100%;"></iframe>
+          </div>
+        </div>
+        <script>
+          document.addEventListener('contextmenu', e => e.preventDefault());
+          const base = "aHR0cHM6Ly9hcHAucG93ZXJiaS5jb20vdmlldz9yPQ=="; // base64 de "https://app.powerbi.com/view?r="
+          const token = "{PBI_PUBLIC_TOKEN}";
+          const src = atob(base) + token;
+          const iframe = document.getElementById('pbi');
+          const spinner = document.getElementById('spinner');
+          setTimeout(() => {{ iframe.src = src; }}, 120);
+          iframe.addEventListener('load', () => {{ if (spinner) spinner.style.display = 'none'; }});
+          function fitHeight() {{
+            const wrap = document.getElementById('wrap');
+            const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+            const target = Math.max(500, vh - 140);
+            wrap.style.paddingBottom = '0';
+            wrap.style.height = target + 'px';
+          }}
+          fitHeight();
+          window.addEventListener('resize', fitHeight);
+        </script>
+        """
+        components.html(html, height=720, scrolling=True)
+
+    elif PBI_MODE == "ORG":
+        if not (PBI_REPORT_ID and PBI_GROUP_ID):
+            st.error("Configure `PBI_MODE=ORG` e defina `PBI_REPORT_ID` e `PBI_GROUP_ID` nos secrets.")
+            return
+
+        # ORG embed (usuário precisa login Microsoft + permissão no relatório)
+        src = f"https://app.powerbi.com/reportEmbed?reportId={PBI_REPORT_ID}&groupId={PBI_GROUP_ID}&autoAuth=true"
+        html = f"""
+        <meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
+        <div style="width:100%; max-width:1600px; margin:0 auto;">
+          <div id="wrap" style="position:relative; padding-bottom:66.66%; height:0; overflow:hidden; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,0.08); border:1px solid #eaeaea;">
+            <iframe title="Relatório (Org)" src="{src}" frameborder="0" allowfullscreen="true"
+                    style="position:absolute; top:0; left:0; width:100%; height:100%;"></iframe>
+          </div>
+        </div>
+        <script>
+          function fitHeight() {{
+            const wrap = document.getElementById('wrap');
+            const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+            const target = Math.max(500, vh - 140);
+            wrap.style.paddingBottom = '0';
+            wrap.style.height = target + 'px';
+          }}
+          fitHeight();
+          window.addEventListener('resize', fitHeight);
+        </script>
+        """
+        components.html(html, height=720, scrolling=True)
+
+    else:
+        st.error("PBI_MODE inválido. Use 'PUBLIC' ou 'ORG'.")
+
+# ----------------------------------------------------------------------------
 # Admin: Usuários
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 def criar_usuario(username, senha, role):
     senha_hash = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     conn = get_connection()
@@ -830,12 +856,27 @@ def listar_usuarios():
     conn.close()
     return rows
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # APP
-# ---------------------------------------------------------------------------
-st.set_page_config(page_title="Yassaka", layout="wide")  # <<< wide para melhor uso do espaço
+# ----------------------------------------------------------------------------
+st.set_page_config(page_title="Yassaka", layout="wide")
 inject_theme()
-ensure_schema()
+
+# Travinha para evitar usar a URL de exemplo e quebrar a conexão
+if (not NEON_URL) or ("ep-xxxx" in NEON_URL) or ("troque_aqui" in NEON_URL):
+    st.warning(
+        "NEON_URL não configurada corretamente. "
+        "Defina em `.env` (NEON_URL=...) ou em `.streamlit/secrets.toml`."
+    )
+    # Sem DB, ainda permitimos ver a aba de Power BI (útil em demos)
+    DB_OK = False
+else:
+    try:
+        ensure_schema()
+        DB_OK = True
+    except Exception as e:
+        st.error(f"Falha ao inicializar o banco: {e}")
+        DB_OK = False
 
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
@@ -851,80 +892,76 @@ if not st.session_state.autenticado:
 # Login
 if not st.session_state.autenticado:
     st.subheader("Login")
-    user = st.text_input("Usuário")
+    # Observação: o Streamlit não expõe autocomplete no input; o warning de 'autocomplete'
+    # que você viu tipicamente vem de iframes de terceiros (ex: Power BI). Aqui é seguro.
+    user = st.text_input("Usuário")         # navegador pode autocompletar pelo nome/label
     pwd = st.text_input("Senha", type="password")
     if st.button("Entrar"):
-        auth = autenticar_usuario(user, pwd)
-        if auth:
-            st.session_state.autenticado = True
-            st.session_state.usuario = auth["username"]
-            st.session_state.role = auth["role"]
-            st.success(f"Bem-vindo, {auth['username']}!")
-            st.rerun()
+        if not DB_OK:
+            st.error("Banco não está configurado/ativo. Configure o NEON_URL para usar login.")
         else:
-            st.error("Usuário ou senha inválidos")
+            auth = autenticar_usuario(user, pwd)
+            if auth:
+                st.session_state.autenticado = True
+                st.session_state.usuario = auth["username"]
+                st.session_state.role = auth["role"]
+                st.success(f"Bem-vindo, {auth['username']}!")
+                st.rerun()
+            else:
+                st.error("Usuário ou senha inválidos")
 
 # Área autenticada
 else:
     role = st.session_state.role
     st.sidebar.write(f"👤 Usuário: {st.session_state.usuario} ({role})")
 
-    if role == "educador":
-        # Educador: só a tela dele
-        st.title("Painel Educadores")
-        if st.sidebar.button("Sair"):
-            st.session_state.clear()
-            st.rerun()
-        page_educador()
-
-    else:
-        # Admin/User: abas
-        abas = ["Propostas", "Painel: Power BI"]  # <<< ADICIONADO
+    # Abas
+    abas = ["Painel: Power BI"]
+    if DB_OK:
+        abas.insert(0, "Propostas")
         if role == "admin":
-            abas.insert(1, "Educadores")     # admin também vê a tela de educadores
+            abas.insert(1, "Educadores")
             abas.append("Admin: Usuários")
 
-        aba = st.sidebar.radio("Navegação", abas)
+    aba = st.sidebar.radio("Navegação", abas)
 
-        if st.sidebar.button("Sair"):
-            st.session_state.clear()
-            st.rerun()
+    if st.sidebar.button("Sair"):
+        st.session_state.clear()
+        st.rerun()
 
-        # título dinâmico por aba
-        if aba == "Propostas":
-            page_propostas()
+    # Roteamento
+    if aba == "Propostas":
+        page_propostas()
+    elif aba == "Educadores":
+        st.title("Painel Educadores")
+        page_educador()
+    elif aba == "Admin: Usuários":
+        st.title("Admin: Usuários")
+        st.subheader("👑 Administração de Usuários")
+        st.markdown("#### Criar novo usuário")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            nu_user = st.text_input("Username (ex: Nome.Sobrenome)")
+        with c2:
+            nu_role = st.selectbox("Role", ["user", "admin", "educador"])
+        with c3:
+            nu_pass = st.text_input("Senha inicial", type="password")
 
-        elif aba == "Painel: Power BI":      # <<< ADICIONADO
-            page_powerbi()
+        if st.button("Criar usuário"):
+            if not DB_OK:
+                st.error("Banco não está configurado/ativo.")
+            elif nu_user.strip() and nu_pass.strip():
+                try:
+                    criar_usuario(nu_user.strip(), nu_pass.strip(), nu_role)
+                    st.success(f"Usuário {nu_user} criado.")
+                except Exception as e:
+                    st.error(f"Erro ao criar: {e}")
+            else:
+                st.error("Preencha username e senha.")
 
-        elif aba == "Educadores":
-            st.title("Painel Educadores")
-            page_educador()
-
-        elif aba == "Admin: Usuários":
-            st.title("Admin: Usuários")
-            st.subheader("👑 Administração de Usuários")
-            st.markdown("#### Criar novo usuário")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                nu_user = st.text_input("Username (ex: Nome.Sobrenome)")
-            with c2:
-                nu_role = st.selectbox("Role", ["user", "admin", "educador"])
-            with c3:
-                nu_pass = st.text_input("Senha inicial", type="password")
-
-            if st.button("Criar usuário"):
-                if nu_user.strip() and nu_pass.strip():
-                    try:
-                        criar_usuario(nu_user.strip(), nu_pass.strip(), nu_role)
-                        st.success(f"Usuário {nu_user} criado.")
-                    except Exception as e:
-                        st.error(f"Erro ao criar: {e}")
-                else:
-                    st.error("Preencha username e senha.")
-
-            st.markdown("---")
-            st.markdown("#### Usuários cadastrados")
+        st.markdown("---")
+        st.markdown("#### Usuários cadastrados")
+        if DB_OK:
             try:
                 rows = listar_usuarios()
                 if rows:
@@ -934,6 +971,11 @@ else:
                     st.info("Nenhum usuário encontrado.")
             except Exception as e:
                 st.error(f"Erro ao listar: {e}")
+        else:
+            st.info("Banco não configurado.")
+
+    elif aba == "Painel: Power BI":
+        page_powerbi()
 
 # Rodapé
 st.markdown(
